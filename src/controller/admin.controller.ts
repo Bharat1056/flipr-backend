@@ -1,5 +1,6 @@
 import { Request, Response } from "express"
 import bcrypt from "bcryptjs"
+import { ZodError } from "zod"
 import asyncHandler from "../utils/asyncHandler"
 import { registerAdminSchema, loginAdminSchema } from "../types/admin.types"
 import { CONFIGS_KEYS } from "../utils/error"
@@ -8,7 +9,6 @@ import prisma from "../utils/prisma"
 import ApiError from "../utils/apiError"
 import tokenService from "../utils/tokenService"
 import ApiResponse from "../utils/apiResponse"
-import { ZodError } from "zod"
 
 export const registerAdmin = asyncHandler(async (req: Request, res: Response) => {
     try {
@@ -269,136 +269,6 @@ export const loginAdmin = asyncHandler(async (req: Request, res: Response) => {
             new ApiResponse(500, {
                 message: "Something went wrong during login"
             }, "Internal server error")
-        );
-    }
-})
-
-export const logoutAdmin = asyncHandler(async (req: Request, res: Response) => {
-    try {
-        const { id } = req.user!
-
-        // Clear refresh token from database
-        await prisma.admin.update({
-            where: { id },
-            data: { refreshToken: null }
-        })
-
-        // Clear cookies
-        tokenService.clearAuthCookies(res)
-
-        return res.status(200).json(
-            new ApiResponse(200, {}, "Admin logged out successfully")
-        )
-    } catch (error: any) {
-        // Handle Prisma errors
-        if (error.code?.startsWith('P')) {
-            return res.status(500).json(
-                new ApiResponse(500, {
-                    message: "Failed to clear session"
-                }, "Internal server error")
-            );
-        }
-
-        // Handle ApiError instances
-        if (error instanceof ApiError) {
-            return res.status(error.statusCode).json(
-                new ApiResponse(error.statusCode, {
-                    message: error.message
-                }, error.message)
-            );
-        }
-
-        // Generic error handler
-        console.error('Admin logout error:', error);
-        return res.status(500).json(
-            new ApiResponse(500, {
-                message: "Something went wrong during logout"
-            }, "Internal server error")
-        );
-    }
-})
-
-export const getAdminData = asyncHandler(async (req: Request, res: Response) => {
-    try {
-        // Extract refresh token from headers
-        const refreshToken = tokenService.extractToken(req)
-
-        if (!refreshToken) {
-            return res.status(401).json(
-                new ApiResponse(401, { user: null }, "No refresh token provided")
-            )
-        }
-
-        // Verify refresh token
-        const decoded = tokenService.verifyRefreshToken(refreshToken)
-
-        if (!decoded?.id || !decoded?.role) {
-            return res.status(401).json(
-                new ApiResponse(401, { user: null }, "Invalid refresh token payload")
-            )
-        }
-
-        // Check if user exists and token matches
-        const admin = await prisma.admin.findUnique({
-            where: { id: decoded.id },
-            select: {
-                id: true,
-                fullName: true,
-                username: true,
-                email: true,
-                refreshToken: true,
-                createdAt: true,
-                updatedAt: true,
-            }
-        })
-
-        if (!admin || admin.refreshToken !== refreshToken) {
-            return res.status(401).json(
-                new ApiResponse(401, { user: null }, "Invalid or expired refresh token")
-            )
-        }
-
-        // Return user data
-        return res.status(200).json(
-            new ApiResponse(200, {
-                user: {
-                    id: admin.id,
-                    fullName: admin.fullName,
-                    username: admin.username,
-                    email: admin.email,
-                    role: 'ADMIN',
-                    createdAt: admin.createdAt,
-                    updatedAt: admin.updatedAt,
-                }
-            }, "Admin data retrieved successfully")
-        )
-
-    } catch (error: any) {
-        // Handle JWT verification errors
-        if (error.message?.includes('jwt') || error.message?.includes('token')) {
-            return res.status(401).json(
-                new ApiResponse(401, { user: null }, "Invalid or expired token")
-            );
-        }
-
-        // Handle Prisma errors
-        if (error.code?.startsWith('P')) {
-            return res.status(500).json(
-                new ApiResponse(500, { user: null }, "Database operation failed")
-            );
-        }
-
-        // Handle network/database connection errors
-        if (error.code === 'ECONNREFUSED' || error.code === 'ENOTFOUND') {
-            return res.status(503).json(
-                new ApiResponse(503, { user: null }, "Service temporarily unavailable")
-            );
-        }
-
-        // Generic error handler
-        console.error('Get admin data error:', error);
-        return res.status(500).json(
-            new ApiResponse(500, { user: null }, "Something went wrong while retrieving admin data")
         );
     }
 })

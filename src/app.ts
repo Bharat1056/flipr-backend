@@ -1,11 +1,12 @@
 import express from "express";
 import cors from "cors";
+import cookieParser from "cookie-parser";
 // import helmet from "helmet";
 // import userRoute from "./router/user.route";
 // import dashboardRoute from "./router/dashboard.route";
 // import inventoryRoute from "./router/inventory.route";
 import adminRoutes from "./router/admin.routes";
-import cookieParser from "cookie-parser";
+import commonRoutes from "./router/common.router";
 
 // const rateLimit = require('express-rate-limit');
 
@@ -43,5 +44,6 @@ app.use(express.static("public"));
 // app.use('/api/inventory', inventoryRoute);
 
 app.use('/api/v1/admin', adminRoutes);
+app.use('/api/v1/common', commonRoutes);
 
 export default app;
