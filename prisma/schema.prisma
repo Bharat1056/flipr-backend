@@ -13,62 +13,161 @@ enum InventoryAction {
   TRANSFER
 }
 
-model User {
-  id        String   @id @default(uuid())
-  name      String
-  email     String   @unique
-  password  String
-  role      Role     @default(STAFF)
-  logs      InventoryLog[]
+enum ProductCategoryType {
+  ELECTRONICS
+  FURNITURE
+  CLOTHING
+  FOOD
+  OTHER
+}
+
+enum InventoryLogActionType {
+  ADD
+  REMOVE
+  UPDATE_CATEGORY_NAME
+  UPDATE_CATEGORY_DESCRIPTION
+  UPDATE_CATEGORY_IMAGE_URL
+  UPDATE_CATEGORY_TYPE
+  UPDATE_PRODUCT_NAME
+  UPDATE_PRODUCT_IMAGE_URL
+  UPDATE_PRODUCT_DESCRIPTION
+  UPDATE_PRODUCT_NUMBER_OF_STOCKS
+  UPDATE_PRODUCT_VALUE
+  UPDATE_PRODUCT_THRESHOLD
+}
+
+enum NotificationType {
+  STOCK_ADD
+  STOCK_DELETE
+  STOCK_THRESHOLD_REACHED
+  STOCK_PRICE_INCREASE
+  STOCK_PRICE_DECREASE
+  STOCK_QUANTITY_INCREASE
+  STOCK_QUANTITY_DECREASE
+
+  CATEGORY_ADD
+  CATEGORY_DELETE
+  CATEGORY_UPDATE
+  PRODUCT_ADD_TO_CATEGORY
+  PRODUCT_REMOVE_FROM_CATEGORY
+  PRODUCT_UPDATE_CATEGORY
+
+  PRODUCT_ADD_TO_STAFF
+  PRODUCT_REMOVE_FROM_STAFF
+}
+
+enum NotificationStatus {
+  READ
+  UNREAD
+}
+
+model Admin {
+  id           String  @id @default(uuid())
+  fullName     String
+  username     String  @unique
+  email        String  @unique
+  password     String
+  refreshToken String?
+
+  categories    Category[]
+  staffs        Staff[]
+  logs          InventoryLog[]
+  notifications Notification[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Staff {
+  id       String @id @default(uuid())
+  fullName String
+  username String @unique
+  email    String @unique
+  password String
+
+  Category      Category[]     @relation("categoryStaff")
+  Product       Product[]      @relation("productStaff")
+  logs          InventoryLog[]
+  notifications Notification[]
+
+  adminId String
+  admin   Admin  @relation(fields: [adminId], references: [id])
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
 
 model Category {
-  id        String    @id @default(uuid())
-  name      String
-  description String?
-  products  Product[]
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
+  id           String              @id @default(uuid())
+  name         String
+  description  String?
+  imageUrl     String?
+  categoryType ProductCategoryType @default(OTHER)
+
+  products      Product[]
+  assignees     Staff[]        @relation("categoryStaff")
+  logs          InventoryLog[]
+  notifications Notification[]
+
+  adminId String
+  admin   Admin  @relation(fields: [adminId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model Product {
-  id             String         @id @default(uuid())
+  id             String  @id @default(uuid())
   name           String
-  sku            String         @unique
   imageUrl       String?
-  stock          Int            @default(0)
-  alertThreshold Int            @default(10)
-  categoryId     String
-  category       Category       @relation(fields: [categoryId], references: [id])
-  logs           InventoryLog[]
-  createdAt      DateTime       @default(now())
-  updatedAt      DateTime       @updatedAt
+  description    String?
+  numberOfStocks Int     @default(0)
+  value          Int     @default(0)
+  threshold      Int     @default(10)
+
+  assignees     Staff[]        @relation("productStaff")
+  logs          InventoryLog[]
+  notifications Notification[]
+
+  categoryId String
+  category   Category @relation(fields: [categoryId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model InventoryLog {
-  id         String           @id @default(uuid())
-  productId  String
-  userId     String
-  quantity   Int
-  action     InventoryAction
-  note       String?
-  product    Product          @relation(fields: [productId], references: [id])
-  user       User             @relation(fields: [userId], references: [id])
-  createdAt  DateTime         @default(now())
+  id          String  @id @default(uuid())
+  description String
+  reason      String?
+
+  actionType InventoryLogActionType
+
+  createdAt  DateTime  @default(now())
+  Category   Category? @relation(fields: [categoryId], references: [id])
+  categoryId String?
+  Product    Product?  @relation(fields: [productId], references: [id])
+  productId  String?
+  Admin      Admin?    @relation(fields: [adminId], references: [id])
+  adminId    String?
+  Staff      Staff?    @relation(fields: [staffId], references: [id])
+  staffId    String?
 }
 
 model Notification {
-  id        String   @id @default(uuid())
-  type      String   // e.g., "EMAIL", "SLACK", "PUSH"
-  message   String
-  status    String   // e.g., "SENT", "FAILED"
-  createdAt DateTime @default(now())
-}
+  id      String             @id @default(uuid())
+  type    NotificationType
+  status  NotificationStatus @default(UNREAD)
+  message String
 
-enum Role {
-  ADMIN
-  STAFF
-  USER
+  Admin      Admin?    @relation(fields: [adminId], references: [id])
+  adminId    String?
+  Staff      Staff?    @relation(fields: [staffId], references: [id])
+  staffId    String?
+  Category   Category? @relation(fields: [categoryId], references: [id])
+  categoryId String?
+  Product    Product?  @relation(fields: [productId], references: [id])
+  productId  String?
+
+  createdAt DateTime @default(now())
 }
