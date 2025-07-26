@@ -1,11 +1,14 @@
 {
-  "name": "boilerplate",
+  "name": "Fli",
   "version": "1.0.0",
-  "main": "index.js",
+  "main": "dist/index.js",
   "scripts": {
     "dev": "npx nodemon src/index.ts",
     "build": "tsc",
-    "start:prod": "node dist/index.js"
+    "clean": "rm -rf dist",
+    "prebuild": "npm run clean",
+    "start:prod": "node dist/index.js",
+    "start": "npm run build && npm run start:prod"
   },
   "keywords": [],
   "author": "",
