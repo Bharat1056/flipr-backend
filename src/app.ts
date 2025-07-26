@@ -1,5 +1,10 @@
 import cors from "cors";
 import express, { Express } from "express";
+import userRoute from "./router/user.route"
+import categoryRoute from "./router/category.route";
+import productRoute from "./router/product.route";
+import dashboardRoute from "./router/dashboard.route";
+import inventoryRoute from "./router/inventory.route";
 
 const rateLimit = require('express-rate-limit');
 const helmet = require('helmet');
@@ -42,5 +47,11 @@ app.use(express.json({ limit: "100kb" }));
 app.use(express.urlencoded({ extended: true, limit: "100kb" }));
 
 app.use(express.static("public"));
+
+app.use('/api/auth',userRoute)
+app.use('/api/inventory', inventoryRoute);
+app.use('/api/category', categoryRoute);
+app.use('/api/product', productRoute);
+app.use('/api/dashboard', dashboardRoute);
 
 export default app;

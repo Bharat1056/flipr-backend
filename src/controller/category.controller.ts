@@ -61,3 +61,10 @@ const deleteCategory = asyncHandler(async (req: Request, res: Response) => {
         throw new ApiError(500, error.message || 'Failed to delete category');
     }
 });
+
+export {
+    getCategories,
+    createCategory,
+    updateCategory,
+    deleteCategory
+}

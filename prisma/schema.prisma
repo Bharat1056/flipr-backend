@@ -13,24 +13,60 @@ enum InventoryAction {
   TRANSFER
 }
 
-model User {
+model Admin {
   id        String   @id @default(uuid())
   name      String
   email     String   @unique
   password  String
-  role      Role     @default(STAFF)
+
+  categories Category[]
+  staffs     Staff[]
+
+  logs InventoryLog[]
+
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}
+
+model Staff {
+  id        String   @id @default(uuid())
+  name      String
+  email     String   @unique
+  password  String
+
+  adminId   String
+  admin     Admin    @relation(fields: [adminId], references: [id])
+  assignedCategories UserCategory[]
   logs      InventoryLog[]
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
 
 model Category {
-  id        String    @id @default(uuid())
-  name      String
+  id          String     @id @default(uuid())
+  name        String
   description String?
-  products  Product[]
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
+  productType String
+
+  products    Product[]
+  assignedStaffs UserCategory[] 
+
+  adminId     String
+  admin       Admin      @relation(fields: [adminId], references: [id])
+
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+}
+
+model UserCategory {
+  staff     Staff    @relation(fields: [staffId], references: [id])
+  staffId   String
+
+  category  Category @relation(fields: [categoryId], references: [id])
+  categoryId String
+
+  @@id([staffId, categoryId])
 }
 
 model Product {
@@ -40,35 +76,48 @@ model Product {
   imageUrl       String?
   stock          Int            @default(0)
   alertThreshold Int            @default(10)
+
   categoryId     String
   category       Category       @relation(fields: [categoryId], references: [id])
+
   logs           InventoryLog[]
+
   createdAt      DateTime       @default(now())
   updatedAt      DateTime       @updatedAt
 }
 
 model InventoryLog {
-  id         String           @id @default(uuid())
-  productId  String
-  userId     String
-  quantity   Int
-  action     InventoryAction
-  note       String?
-  product    Product          @relation(fields: [productId], references: [id])
-  user       User             @relation(fields: [userId], references: [id])
-  createdAt  DateTime         @default(now())
+  id         String    @id @default(uuid())
+
+  warehouseId String
+
+  adminId     String?  
+  admin       Admin?   @relation(fields: [adminId], references: [id])
+
+  staffId     String?
+  staff       Staff?   @relation(fields: [staffId], references: [id])
+
+  actionType  String  
+
+  entity      String   
+  entityId    String   
+
+  oldValue    String?
+  newValue    String?
+
+  reason      String?
+  ipAddress   String?
+
+  productId   String?
+  product     Product? @relation(fields: [productId], references: [id])
+
+  createdAt   DateTime @default(now())
 }
 
 model Notification {
   id        String   @id @default(uuid())
-  type      String   // e.g., "EMAIL", "SLACK", "PUSH"
+  type      String  
   message   String
-  status    String   // e.g., "SENT", "FAILED"
+  status    String   
   createdAt DateTime @default(now())
-}
-
-enum Role {
-  ADMIN
-  STAFF
-  USER
 }
