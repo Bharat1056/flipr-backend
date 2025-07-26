@@ -10,7 +10,8 @@ import { AuthenticatedRequest } from "../types/authentication.types";
 
 export const logout = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
     try {
-        const { id, role } = req.user!
+        const { id } = req.user!
+        const { role } = req.body
 
         if (role === 'ADMIN') {
             await prisma.admin.update({

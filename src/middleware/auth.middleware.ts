@@ -8,7 +8,7 @@ import { AuthenticatedRequest } from "../types/authentication.types";
 const authenticateToken = asyncHandler(async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
   try {
     const token = tokenService.extractToken(req);
-
+    console.log('token:', token)
     if (!token) {
       throw new ApiError(401, 'Authentication token is required');
     }

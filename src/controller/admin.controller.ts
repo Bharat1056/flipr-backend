@@ -58,7 +58,7 @@ export const registerAdmin = asyncHandler(async (req: Request, res: Response) =>
         })
 
         // Set cookies
-        tokenService.setAuthCookies(res, tokens)
+        // tokenService.setAuthCookies(res, tokens)
 
         // Update admin with refresh token
         await prisma.admin.update({
@@ -192,7 +192,7 @@ export const loginAdmin = asyncHandler(async (req: Request, res: Response) => {
         })
 
         // Set cookies
-        tokenService.setAuthCookies(res, tokens)
+        // tokenService.setAuthCookies(res, tokens)
 
         // Update admin with refresh token
         await prisma.admin.update({
@@ -202,12 +202,13 @@ export const loginAdmin = asyncHandler(async (req: Request, res: Response) => {
 
         return res.status(200).json(
             new ApiResponse(200, {
-                admin: {
+                user: {
                     id: admin.id,
                     fullName: admin.fullName,
                     username: admin.username,
                     email: admin.email,
                 },
+                token: tokens.refreshToken,
                 expiresIn: tokens.expiresIn,
             }, "Admin logged in successfully")
         )

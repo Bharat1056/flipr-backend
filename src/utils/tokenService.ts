@@ -60,7 +60,7 @@ class TokenService {
    */
   setAuthCookies(res: Response, tokens: TokenResponse): void {
     // Set refresh token as httpOnly cookie
-    res.cookie('refreshToken', tokens.refreshToken, {
+    res.cookie('token', tokens.refreshToken, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'strict',
