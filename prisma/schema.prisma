@@ -79,11 +79,12 @@ model Admin {
 }
 
 model Staff {
-  id       String @id @default(uuid())
-  fullName String
-  username String @unique
-  email    String @unique
-  password String
+  id           String  @id @default(uuid())
+  fullName     String
+  username     String  @unique
+  email        String  @unique
+  password     String
+  refreshToken String?
 
   Category      Category[]     @relation("categoryStaff")
   Product       Product[]      @relation("productStaff")

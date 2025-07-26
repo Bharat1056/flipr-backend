@@ -1,25 +1,11 @@
-
+import { Request, Response, NextFunction } from "express";
 import asyncHandler from "../utils/asyncHandler";
 import prisma from "../utils/prisma";
-import { Request, Response, NextFunction } from "express";
-import ApiError from "../utils/apiError";
 import tokenService from "../utils/tokenService";
+import ApiError from "../utils/apiError";
+import { AuthenticatedRequest } from "../types/authentication.types";
 
-declare global {
-  namespace Express {
-    interface Request {
-      user?: {
-        id: string;
-        username: string;
-        email: string;
-        role: "ADMIN" | "STAFF";
-        adminId?: string;
-      };
-    }
-  }
-}
-
-const authenticateToken = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
+const authenticateToken = asyncHandler(async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
   try {
     const token = tokenService.extractToken(req);
 
@@ -36,12 +22,6 @@ const authenticateToken = asyncHandler(async (req: Request, res: Response, next:
     if (decoded.role === "ADMIN") {
       const admin = await prisma.admin.findUnique({
         where: { id: decoded.id },
-        select: { 
-          id: true, 
-          email: true, 
-          username: true,
-          fullName: true 
-        }
       });
 
       if (!admin) {
@@ -49,35 +29,20 @@ const authenticateToken = asyncHandler(async (req: Request, res: Response, next:
       }
 
       req.user = {
-        id: admin.id,
-        username: admin.username,
-        email: admin.email,
+        ...admin,
         role: "ADMIN",
-      };
+      }
 
     } else if (decoded.role === "STAFF") {
       const staff = await prisma.staff.findUnique({
         where: { id: decoded.id },
-        select: { 
-          id: true, 
-          email: true, 
-          username: true,
-          fullName: true,
-          adminId: true 
-        }
       });
 
       if (!staff || !staff.adminId) {
         throw new ApiError(403, "Staff not found or not linked to any admin");
       }
 
-      req.user = {
-        id: staff.id,
-        username: staff.username,
-        email: staff.email,
-        role: "STAFF",
-        adminId: staff.adminId,
-      };
+      req.user = { ...staff, role: "STAFF" };
 
     } else {
       throw new ApiError(400, "Invalid role");
@@ -94,7 +59,8 @@ const authenticateToken = asyncHandler(async (req: Request, res: Response, next:
 
 const authorizeRoles = (...roles: ("ADMIN" | "STAFF")[]) => {
   return (req: Request, res: Response, next: NextFunction) => {
-    if (!req.user || !roles.includes(req.user.role)) {
+    const request = req as AuthenticatedRequest
+    if (!request.user || !roles.includes(request.user.role)) {
       throw new ApiError(403, 'Access denied: insufficient permissions');
     }
     next();
