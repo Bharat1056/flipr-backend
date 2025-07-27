@@ -9,6 +9,7 @@ import adminRoutes from "./router/admin.routes";
 import commonRoutes from "./router/common.router";
 import categoryRoutes from "./router/category.router";
 import productRoutes from "./router/product.router";
+import inventoryRoutes from "./router/inventory.router";
 
 // const rateLimit = require('express-rate-limit');
 
@@ -49,5 +50,6 @@ app.use('/api/v1/admin', adminRoutes);
 app.use('/api/v1/common', commonRoutes);
 app.use('/api/v1/category', categoryRoutes);
 app.use('/api/v1/product', productRoutes);
+app.use('/api/v1/inventory', inventoryRoutes);
 
 export default app;
