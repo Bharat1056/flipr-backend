@@ -14,7 +14,7 @@ router.delete("/delete/:productId", authenticateToken, authorizeRoles("ADMIN"), 
 
 router.get("/individual/:productId", authenticateToken, authorizeRoles("ADMIN", "STAFF"), individualProduct)
 
-router.put("/update-stock/:productId", authenticateToken, authorizeRoles("ADMIN", "STAFF"), updateProductQuantity)
+router.put("/update/:productId", authenticateToken, authorizeRoles("ADMIN", "STAFF"), updateProductQuantity)
 
 
 export default router
