@@ -41,8 +41,8 @@ export const createProduct = asyncHandler(async (req: AuthenticatedRequest, res:
         throw new ApiError(404, "Category not found or doesn't belong to this admin")
     }
 
-    let status = "GOOD"
-    if (numberOfStocks <= threshold) {
+    let status: ProductStatus = "GOOD"
+    if(numberOfStocks <= threshold){
         status = "CRITICAL"
     }
 
@@ -56,7 +56,7 @@ export const createProduct = asyncHandler(async (req: AuthenticatedRequest, res:
             value: value || 0,
             threshold: threshold || 10,
             categoryId: categoryObj.id,
-            status: status as ProductStatus
+            status
         },
         include: {
             category: true
@@ -323,15 +323,14 @@ export const individualProduct = asyncHandler(async (req: Request, res: Response
     )
 })
 
-export const increaseProductQuantity = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+export const updateProductQuantity = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
     const { id, role } = req.user!
     const { productId } = req.params
-    const { quantity, note } = req.body
-    const io = getIO()
+    const { stock: newQuantity, note } = req.body
 
     // Validate required fields
-    if (!quantity || quantity <= 0) {
-        throw new ApiError(400, "Quantity must be a positive number")
+    if (newQuantity === undefined || newQuantity === null) {
+        throw new ApiError(400, "Stock quantity is required")
     }
 
     // Find the product
@@ -363,9 +362,20 @@ export const increaseProductQuantity = asyncHandler(async (req: AuthenticatedReq
         throw new ApiError(403, "Invalid role")
     }
 
+    // Calculate the difference between new and previous quantity
+    const previousQuantity = product.numberOfStocks
+    const quantityDifference = newQuantity - previousQuantity
+
+    // Determine if it's an increase or decrease
+    const isIncrease = quantityDifference > 0
+    const isDecrease = quantityDifference < 0
+    const actionType = isIncrease ? "INCREASE" : "DECREASE"
+    
+    // Format the quantity difference with + or - sign
+    const formattedQuantity = isIncrease ? `+${quantityDifference}` : isDecrease ? `${quantityDifference}` : "0"
+
     // Update product quantity
-    const newQuantity = product.numberOfStocks + quantity
-    let newStatus = product.status
+    let newStatus: ProductStatus = product.status
 
     // Update status based on new quantity
     if (newQuantity <= product.threshold) {
@@ -378,134 +388,54 @@ export const increaseProductQuantity = asyncHandler(async (req: AuthenticatedReq
         where: { id: productId },
         data: {
             numberOfStocks: newQuantity,
-            status: newStatus as ProductStatus
+            status: newStatus
         },
         include: {
             category: true
         }
     })
 
-    // Create inventory log
-    await prisma.inventoryLog.create({
-        data: {
-            note: note || "Manual quantity increase",
-            actionType: "UPDATE_PRODUCT_NUMBER_OF_STOCKS",
+    // Create inventory log only if there's a change
+    if (quantityDifference !== 0) {
+        console.log('Creating inventory log with data:', {
+            note: note || `Quantity ${isIncrease ? 'increased' : 'decreased'} from ${previousQuantity} to ${newQuantity}`,
+            actionType: actionType,
             productId: productId,
-            quantity: `+${quantity}`,
-            ...(role === "ADMIN" ? { adminId: id } : { staffId: id })
-        }
-    })
-
-    // Emit for product list and product detail refresh
-    io.emit('product_stock_updated')
-    io.emit(`product_updated_${productId}`)
-
-    // Emit for inventory log update to correct admin
-    const adminIdToNotify = role === 'ADMIN' ? id : product.category.adminId
-    io.emit(`inventory_log_created_${adminIdToNotify}`)
-
-    return res.status(200).json(
-        new ApiResponse(200, updatedProduct, "Product quantity increased successfully")
-    )
-})
-
-export const decreaseProductQuantity = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
-    const { id, role } = req.user!
-    const { productId } = req.params
-    const { quantity, note } = req.body
-
-    // Validate required fields
-    if (!quantity || quantity <= 0) {
-        throw new ApiError(400, "Quantity must be a positive number")
-    }
-
-    // Find the product
-    const product = await prisma.product.findUnique({
-        where: { id: productId },
-        include: {
-            category: true,
-            assignees: true
-        }
-    })
-
-    if (!product) {
-        throw new ApiError(404, "Product not found")
-    }
-
-    // Check authorization based on role
-    if (role === "STAFF") {
-        // Check if staff is assigned to this product
-        const isAssigned = product.assignees.some(assignee => assignee.id === id)
-        if (!isAssigned) {
-            throw new ApiError(403, "You are not authorized to modify this product")
-        }
-    } else if (role === "ADMIN") {
-        // Check if admin owns the category of this product
-        if (product.category.adminId !== id) {
-            throw new ApiError(403, "You are not authorized to modify this product")
-        }
-    } else {
-        throw new ApiError(403, "Invalid role")
-    }
-
-    // Check if there's enough stock to decrease
-    if (product.numberOfStocks < quantity) {
-        throw new ApiError(400, "Insufficient stock to decrease by the requested amount")
-    }
-
-    // Update product quantity
-    const newQuantity = product.numberOfStocks - quantity
-    let newStatus = product.status
-
-    // Update status based on new quantity
-    if (newQuantity <= product.threshold) {
-        newStatus = "CRITICAL"
-    } else {
-        newStatus = "GOOD"
-    }
-
-    const updatedProduct = await prisma.product.update({
-        where: { id: productId },
-        data: {
-            numberOfStocks: newQuantity,
-            status: newStatus as ProductStatus
-        },
-        include: {
-            category: true
-        }
-    })
-
-    // Create inventory log
-    await prisma.inventoryLog.create({
-        data: {
-            note: note || "Manual quantity decrease",
-            actionType: "UPDATE_PRODUCT_NUMBER_OF_STOCKS",
-            productId: productId,
-            quantity: `-${quantity}`,
-            ...(role === "ADMIN" ? { adminId: id } : { staffId: id })
-        }
-    })
-
-    // Create notification for threshold reached
-    if (newQuantity <= product.threshold && product.numberOfStocks > product.threshold) {
-        await prisma.notification.create({
-            data: {
-                type: "STOCK_THRESHOLD_REACHED",
-                message: `Product "${product.name}" has reached critical threshold. Current stock: ${newQuantity}`,
-                productId: productId,
-                ...(role === "ADMIN" ? { adminId: id } : { staffId: id })
-            }
+            quantity: formattedQuantity,
+            adminId: role === "ADMIN" ? id : undefined,
+            staffId: role === "STAFF" ? id : undefined
         })
+        
+        try {
+            const inventoryLogData: any = {
+                note: note || `Quantity ${isIncrease ? 'increased' : 'decreased'} from ${previousQuantity} to ${newQuantity}`,
+                actionType: actionType,
+                productId: productId,
+                quantity: formattedQuantity
+            }
+
+            if (role === "ADMIN") {
+                inventoryLogData.adminId = id
+            } else {
+                inventoryLogData.staffId = id
+            }
+
+            const inventoryLog = await prisma.inventoryLog.create({
+                data: inventoryLogData
+            })
+            
+            console.log('Created inventory log:', inventoryLog)
+        } catch (error) {
+            console.error('Error creating inventory log:', error)
+            throw new ApiError(500, "Failed to create inventory log")
+        }
     }
 
-    const io = getIO()
-    io.emit('product_stock_updated')
-    io.emit(`product_updated_${productId}`)
-
-    const adminIdToNotify = role === 'ADMIN' ? id : product.category.adminId
-    io.emit(`inventory_log_created_${adminIdToNotify}`)
+    const responseMessage = quantityDifference === 0 
+        ? "Product quantity unchanged" 
+        : `Product quantity ${isIncrease ? 'increased' : 'decreased'} successfully`
 
     return res.status(200).json(
-        new ApiResponse(200, updatedProduct, "Product quantity decreased successfully")
+        new ApiResponse(200, updatedProduct, responseMessage)
     )
 })

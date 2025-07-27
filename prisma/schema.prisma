@@ -21,21 +21,6 @@ enum ProductCategoryType {
   OTHER
 }
 
-enum InventoryLogActionType {
-  ADD
-  REMOVE
-  UPDATE_CATEGORY_NAME
-  UPDATE_CATEGORY_DESCRIPTION
-  UPDATE_CATEGORY_IMAGE_URL
-  UPDATE_CATEGORY_TYPE
-  UPDATE_PRODUCT_NAME
-  UPDATE_PRODUCT_IMAGE_URL
-  UPDATE_PRODUCT_DESCRIPTION
-  UPDATE_PRODUCT_NUMBER_OF_STOCKS
-  UPDATE_PRODUCT_VALUE
-  UPDATE_PRODUCT_THRESHOLD
-}
-
 enum NotificationType {
   STOCK_ADD
   STOCK_DELETE
@@ -139,15 +124,16 @@ model Product {
   categoryId String
   category   Category @relation(fields: [categoryId], references: [id])
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+  StockSnapshot StockSnapshot[]
 }
 
 model InventoryLog {
   id   String  @id @default(uuid())
   note String?
 
-  actionType InventoryLogActionType
+  actionType String
   quantity   String?
 
   Category   Category? @relation(fields: [categoryId], references: [id])
@@ -176,6 +162,17 @@ model Notification {
   categoryId String?
   Product    Product?  @relation(fields: [productId], references: [id])
   productId  String?
+
+  createdAt DateTime @default(now())
+}
+
+model StockSnapshot {
+  id        String   @id @default(uuid())
+  productId String
+  product   Product  @relation(fields: [productId], references: [id])
+  quantity  Int
+  value     Int
+  timestamp DateTime @default(now())
 
   createdAt DateTime @default(now())
 }

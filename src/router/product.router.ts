@@ -1,5 +1,5 @@
 import { Router } from "express"
-import { createProduct, deleteProduct, getProducts, individualProduct, increaseProductQuantity, decreaseProductQuantity } from "../controller/product.controller"
+import { createProduct, deleteProduct, getProducts, individualProduct, updateProductQuantity } from "../controller/product.controller"
 import { authenticateToken, authorizeRoles } from "../middleware/auth.middleware"
 
 const router = Router()
@@ -14,8 +14,7 @@ router.delete("/delete/:productId", authenticateToken, authorizeRoles("ADMIN"), 
 
 router.get("/individual/:productId", authenticateToken, authorizeRoles("ADMIN", "STAFF"), individualProduct)
 
-router.patch("/increase/:productId", authenticateToken, authorizeRoles("ADMIN", "STAFF"), increaseProductQuantity)
+router.put("/update/:productId", authenticateToken, authorizeRoles("ADMIN", "STAFF"), updateProductQuantity)
 
-router.patch("/decrease/:productId", authenticateToken, authorizeRoles("ADMIN", "STAFF"), decreaseProductQuantity)
 
 export default router
