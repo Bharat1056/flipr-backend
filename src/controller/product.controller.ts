@@ -368,7 +368,7 @@ export const updateProductQuantity = asyncHandler(async (req: AuthenticatedReque
     // Determine if it's an increase or decrease
     const isIncrease = quantityDifference > 0
     const isDecrease = quantityDifference < 0
-    const actionType: InventoryLogActionType = isIncrease ? "INCREASE" : "DECREASE"
+    const actionType: InventoryLogActionType = isIncrease ? InventoryLogActionType.INCREASE : InventoryLogActionType.DECREASE
     
     // Format the quantity difference with + or - sign
     const formattedQuantity = isIncrease ? `+${quantityDifference}` : isDecrease ? `${quantityDifference}` : "0"
