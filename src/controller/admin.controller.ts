@@ -207,6 +207,7 @@ export const loginAdmin = asyncHandler(async (req: Request, res: Response) => {
                     fullName: admin.fullName,
                     username: admin.username,
                     email: admin.email,
+                    role: "ADMIN"
                 },
                 token: tokens.refreshToken,
                 expiresIn: tokens.expiresIn,

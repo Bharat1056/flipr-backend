@@ -7,6 +7,8 @@ import cookieParser from "cookie-parser";
 // import inventoryRoute from "./router/inventory.route";
 import adminRoutes from "./router/admin.routes";
 import commonRoutes from "./router/common.router";
+import categoryRoutes from "./router/category.router";
+import productRoutes from "./router/product.router";
 
 // const rateLimit = require('express-rate-limit');
 
@@ -45,5 +47,7 @@ app.use(express.static("public"));
 
 app.use('/api/v1/admin', adminRoutes);
 app.use('/api/v1/common', commonRoutes);
+app.use('/api/v1/category', categoryRoutes);
+app.use('/api/v1/product', productRoutes);
 
 export default app;
