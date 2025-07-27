@@ -5,10 +5,11 @@ import ApiError from "../utils/apiError"
 import ApiResponse from "../utils/apiResponse"
 import { AuthenticatedRequest } from "../types/authentication.types"
 import { ProductStatus } from "@prisma/client"
+import { getIO } from '../lib/socket'
 
 export const createProduct = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
     const { id, role } = req.user!
-    
+
     // Only ADMIN can create products
     if (role !== "ADMIN") {
         throw new ApiError(403, "Only admins can create products")
@@ -70,7 +71,7 @@ export const createProduct = asyncHandler(async (req: AuthenticatedRequest, res:
 export const getProducts = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
     const { id, role } = req.user!
     const { category, page = "1", limit = "10", sortBy = "createdAt", sortOrder = "desc", search, status } = req.query
-    
+
     const pageNumber = parseInt(page as string) || 1
     const limitNumber = parseInt(limit as string) || 10
     const skip = (pageNumber - 1) * limitNumber
@@ -84,11 +85,11 @@ export const getProducts = asyncHandler(async (req: AuthenticatedRequest, res: R
     // Validate sortBy and sortOrder
     const validSortFields = ['name', 'createdAt', 'updatedAt', 'numberOfStocks', 'value']
     const validSortOrders = ['asc', 'desc']
-    
+
     if (!validSortFields.includes(sortBy as string)) {
         throw new ApiError(400, "Invalid sortBy parameter")
     }
-    
+
     if (!validSortOrders.includes(sortOrder as string)) {
         throw new ApiError(400, "Invalid sortOrder parameter")
     }
@@ -101,14 +102,14 @@ export const getProducts = asyncHandler(async (req: AuthenticatedRequest, res: R
                 Product: true
             }
         })
-        
+
         if (!staff) {
             throw new ApiError(404, "Staff not found")
         }
 
         // Get staff's product IDs
         const staffProductIds = staff.Product.map(product => product.id)
-        
+
         if (staffProductIds.length === 0) {
             return res.status(200).json(
                 new ApiResponse(200, {
@@ -133,11 +134,11 @@ export const getProducts = asyncHandler(async (req: AuthenticatedRequest, res: R
                     adminId: staff.adminId
                 }
             })
-            
+
             if (!categoryObj) {
                 throw new ApiError(404, "Category not found")
             }
-            
+
             whereClause.categoryId = categoryObj.id
         }
 
@@ -157,14 +158,14 @@ export const getProducts = asyncHandler(async (req: AuthenticatedRequest, res: R
                 categories: true
             }
         })
-        
+
         if (!admin) {
             throw new ApiError(404, "Admin not found")
         }
 
         // Get admin's category IDs
         const adminCategoryIds = admin.categories.map(category => category.id)
-        
+
         if (adminCategoryIds.length === 0) {
             return res.status(200).json(
                 new ApiResponse(200, {
@@ -189,11 +190,11 @@ export const getProducts = asyncHandler(async (req: AuthenticatedRequest, res: R
                     adminId: id
                 }
             })
-            
+
             if (!categoryObj) {
                 throw new ApiError(404, "Category not found")
             }
-            
+
             whereClause.categoryId = categoryObj.id
         }
 
@@ -263,7 +264,7 @@ export const deleteProduct = asyncHandler(async (req: AuthenticatedRequest, res:
     const { id, role } = req.user!
     const { productId } = req.params
 
-    if(role !== "ADMIN"){
+    if (role !== "ADMIN") {
         throw new ApiError(403, "Only admins can delete products")
     }
 
@@ -274,11 +275,11 @@ export const deleteProduct = asyncHandler(async (req: AuthenticatedRequest, res:
         }
     })
 
-    if(!product){
+    if (!product) {
         throw new ApiError(404, "Product not found")
     }
-    
-    if(product.category.adminId !== id){
+
+    if (product.category.adminId !== id) {
         throw new ApiError(403, "You are not authorized to delete this product")
     }
 
@@ -302,23 +303,23 @@ export const individualProduct = asyncHandler(async (req: Request, res: Response
         }
     })
 
-    
-    if(!product){
+
+    if (!product) {
         throw new ApiError(404, "Product not found")
     }
-    
+
     const { adminId } = product.category
-    
+
     const admin = await prisma.admin.findUnique({
         where: { id: adminId }
     })
 
-    if(!admin){
+    if (!admin) {
         throw new ApiError(404, "Admin not found for this product")
     }
 
     return res.status(200).json(
-        new ApiResponse(200, {...product, adminName: admin.fullName, assignees: product.assignees.map(assignee => assignee.fullName)  }, "Product fetched successfully")
+        new ApiResponse(200, { ...product, adminName: admin.fullName, assignees: product.assignees.map(assignee => assignee.fullName) }, "Product fetched successfully")
     )
 })
 
