@@ -21,11 +21,6 @@ enum ProductCategoryType {
   OTHER
 }
 
-enum InventoryLogActionType {
-  INCREASE
-  DECREASE
-}
-
 enum NotificationType {
   STOCK_ADD
   STOCK_DELETE
@@ -138,7 +133,7 @@ model InventoryLog {
   id   String  @id @default(uuid())
   note String?
 
-  actionType InventoryLogActionType
+  actionType String
   quantity   String?
 
   Category   Category? @relation(fields: [categoryId], references: [id])
