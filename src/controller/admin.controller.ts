@@ -2,7 +2,7 @@ import { Request, Response } from "express"
 import bcrypt from "bcryptjs"
 import { ZodError } from "zod"
 import asyncHandler from "../utils/asyncHandler"
-import { registerAdminSchema, loginAdminSchema } from "../types/admin.types"
+import { registerAdminSchema, loginAdminSchema, registerStaffSchema } from "../types/admin.types"
 import { CONFIGS_KEYS } from "../utils/error"
 import { BCRYPT_SALT_ROUNDS } from "../constants"
 import prisma from "../utils/prisma"
@@ -159,6 +159,7 @@ export const registerAdmin = asyncHandler(async (req: Request, res: Response) =>
         );
     }
 })
+
 
 export const loginAdmin = asyncHandler(async (req: Request, res: Response) => {
     try {
