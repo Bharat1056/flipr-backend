@@ -18,6 +18,15 @@ export const getInventoryStatsQuerySchema = z.object({
     endDate: z.string().optional(),
 })
 
+export const getStockVarianceQuerySchema = z.object({
+    productId: z.string().optional(),
+    categoryId: z.string().optional(),
+    startDate: z.string().optional(),
+    endDate: z.string().optional(),
+    targetDate: z.string().optional(),
+    comparisonType: z.enum(['previous', 'average', 'baseline']).optional(),
+})
+
 export interface InventoryLogResponse {
     id: string
     note: string | null
@@ -53,4 +62,30 @@ export interface InventoryStatsResponse {
         date: string
         count: number
     }>
+}
+
+export interface StockVarianceResult {
+    productId: string
+    productName: string
+    categoryName: string
+    currentStock: number
+    stockAtTargetDate: number
+    comparisonValue: number
+    comparisonDate: Date | null
+    variance: number
+    variancePercentage: number
+    varianceType: 'INCREASE' | 'DECREASE' | 'NO_CHANGE'
+    targetDate: Date
+    comparisonType: string
+}
+
+export interface StockVarianceResponse {
+    varianceResults: StockVarianceResult[]
+    summary: {
+        totalProducts: number
+        increasedProducts: number
+        decreasedProducts: number
+        unchangedProducts: number
+        averageVariance: number
+    }
 } 

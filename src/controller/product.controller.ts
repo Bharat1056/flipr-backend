@@ -4,8 +4,7 @@ import prisma from "../utils/prisma"
 import ApiError from "../utils/apiError"
 import ApiResponse from "../utils/apiResponse"
 import { AuthenticatedRequest } from "../types/authentication.types"
-import { ProductStatus } from "@prisma/client"
-import { InventoryLogActionType } from "@prisma/client"
+import { ProductStatus, InventoryLogActionType } from "@prisma/client"
 
 export const createProduct = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
     const { id, role } = req.user!
@@ -41,7 +40,7 @@ export const createProduct = asyncHandler(async (req: AuthenticatedRequest, res:
         throw new ApiError(404, "Category not found or doesn't belong to this admin")
     }
 
-    let status = "GOOD"
+    let status: ProductStatus = "GOOD"
     if(numberOfStocks <= threshold){
         status = "CRITICAL"
     }
@@ -56,7 +55,7 @@ export const createProduct = asyncHandler(async (req: AuthenticatedRequest, res:
             value: value || 0,
             threshold: threshold || 10,
             categoryId: categoryObj.id,
-            status: status as ProductStatus
+            status
         },
         include: {
             category: true
@@ -369,13 +368,13 @@ export const updateProductQuantity = asyncHandler(async (req: AuthenticatedReque
     // Determine if it's an increase or decrease
     const isIncrease = quantityDifference > 0
     const isDecrease = quantityDifference < 0
-    const actionType = isIncrease ? "INCREASE" as const : "DECREASE" as const
+    const actionType: InventoryLogActionType = isIncrease ? "INCREASE" : "DECREASE"
     
     // Format the quantity difference with + or - sign
     const formattedQuantity = isIncrease ? `+${quantityDifference}` : isDecrease ? `${quantityDifference}` : "0"
 
     // Update product quantity
-    let newStatus = product.status
+    let newStatus: ProductStatus = product.status
 
     // Update status based on new quantity
     if (newQuantity <= product.threshold) {
@@ -388,7 +387,7 @@ export const updateProductQuantity = asyncHandler(async (req: AuthenticatedReque
         where: { id: productId },
         data: {
             numberOfStocks: newQuantity,
-            status: newStatus as ProductStatus
+            status: newStatus
         },
         include: {
             category: true
@@ -407,14 +406,21 @@ export const updateProductQuantity = asyncHandler(async (req: AuthenticatedReque
         })
         
         try {
+            const inventoryLogData: any = {
+                note: note || `Quantity ${isIncrease ? 'increased' : 'decreased'} from ${previousQuantity} to ${newQuantity}`,
+                actionType: actionType,
+                productId: productId,
+                quantity: formattedQuantity
+            }
+
+            if (role === "ADMIN") {
+                inventoryLogData.adminId = id
+            } else {
+                inventoryLogData.staffId = id
+            }
+
             const inventoryLog = await prisma.inventoryLog.create({
-                data: {
-                    note: note || `Quantity ${isIncrease ? 'increased' : 'decreased'} from ${previousQuantity} to ${newQuantity}`,
-                    actionType: actionType as InventoryLogActionType,
-                    productId: productId,
-                    quantity: formattedQuantity,
-                    ...(role === "ADMIN" ? { adminId: id } : { staffId: id })
-                }
+                data: inventoryLogData
             })
             
             console.log('Created inventory log:', inventoryLog)

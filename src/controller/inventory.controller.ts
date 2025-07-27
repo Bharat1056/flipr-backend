@@ -208,9 +208,9 @@ export const getInventoryLogById = asyncHandler(async (req: AuthenticatedRequest
 
     const transformedLog = {
         id: log.id,
-        note: log.note,
+        note: (log as any).note,
         actionType: log.actionType,
-        quantity: log.quantity,
+        quantity: (log as any).quantity,
         createdAt: log.createdAt,
         product: log.Product ? {
             id: log.Product.id,
@@ -350,8 +350,8 @@ export const testInventoryLogs = asyncHandler(async (req: AuthenticatedRequest, 
                 adminId: log.adminId,
                 staffId: log.staffId,
                 actionType: log.actionType,
-                quantity: log.quantity,
-                note: log.note,
+                quantity: (log as any).quantity,
+                note: (log as any).note,
                 createdAt: log.createdAt,
                 product: log.Product ? {
                     id: log.Product.id,
@@ -361,3 +361,203 @@ export const testInventoryLogs = asyncHandler(async (req: AuthenticatedRequest, 
         }, "Test inventory logs")
     )
 }) 
+
+export const getStockVariance = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+    const { id, role } = req.user!
+    const { 
+        productId, 
+        categoryId, 
+        startDate, 
+        endDate,
+        targetDate,
+        comparisonType = "previous" // "previous", "average", "baseline"
+    } = req.query
+
+    let whereClause: any = {}
+
+    // Role-based filtering
+    if (role === "STAFF") {
+        whereClause.staffId = id
+    } else if (role === "ADMIN") {
+        whereClause.adminId = id
+    } else {
+        throw new ApiError(403, "Invalid role")
+    }
+
+    // Filter by product
+    if (productId) {
+        whereClause.productId = productId as string
+    }
+
+    // Filter by category
+    if (categoryId) {
+        whereClause.categoryId = categoryId as string
+    }
+
+    // Parse target date
+    const targetDateTime = targetDate ? new Date(targetDate as string) : new Date()
+    
+    // Get current stock levels
+    const currentProducts = await prisma.product.findMany({
+        where: {
+            ...(productId && { id: productId as string }),
+            ...(categoryId && { categoryId: categoryId as string }),
+            category: {
+                ...(role === "ADMIN" && { adminId: id }),
+                ...(role === "STAFF" && { 
+                    assignees: { some: { id } }
+                })
+            }
+        },
+        include: {
+            category: true
+        }
+    })
+
+    const varianceResults = await Promise.all(
+        currentProducts.map(async (product) => {
+            // Calculate stock level at target date
+            const stockAtTargetDate = await calculateStockAtDate(product.id, targetDateTime)
+            
+            // Calculate comparison value based on type
+            let comparisonValue = 0
+            let comparisonDate = null
+            
+            if (comparisonType === "previous") {
+                // Compare with previous day
+                const previousDate = new Date(targetDateTime)
+                previousDate.setDate(previousDate.getDate() - 1)
+                comparisonValue = await calculateStockAtDate(product.id, previousDate)
+                comparisonDate = previousDate
+            } else if (comparisonType === "average") {
+                // Compare with average of last 7 days
+                const sevenDaysAgo = new Date(targetDateTime)
+                sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7)
+                comparisonValue = await calculateAverageStock(product.id, sevenDaysAgo, targetDateTime)
+                comparisonDate = sevenDaysAgo
+            } else if (comparisonType === "baseline") {
+                // Compare with baseline (first recorded stock)
+                comparisonValue = await getBaselineStock(product.id)
+                comparisonDate = null
+            }
+
+            // Calculate variance
+            const variance = stockAtTargetDate - comparisonValue
+            const variancePercentage = comparisonValue !== 0 
+                ? ((variance / comparisonValue) * 100) 
+                : 0
+
+            return {
+                productId: product.id,
+                productName: product.name,
+                categoryName: (product as any).category?.name || 'Unknown',
+                currentStock: product.numberOfStocks,
+                stockAtTargetDate,
+                comparisonValue,
+                comparisonDate,
+                variance,
+                variancePercentage,
+                varianceType: variance > 0 ? "INCREASE" : variance < 0 ? "DECREASE" : "NO_CHANGE",
+                targetDate: targetDateTime,
+                comparisonType
+            }
+        })
+    )
+
+    return res.status(200).json(
+        new ApiResponse(200, {
+            varianceResults,
+            summary: {
+                totalProducts: varianceResults.length,
+                increasedProducts: varianceResults.filter(r => r.variance > 0).length,
+                decreasedProducts: varianceResults.filter(r => r.variance < 0).length,
+                unchangedProducts: varianceResults.filter(r => r.variance === 0).length,
+                averageVariance: varianceResults.reduce((sum, r) => sum + r.variance, 0) / varianceResults.length
+            }
+        }, "Stock variance analysis completed successfully")
+    )
+})
+
+// Helper function to calculate stock at a specific date
+async function calculateStockAtDate(productId: string, targetDate: Date): Promise<number> {
+    const logs = await prisma.inventoryLog.findMany({
+        where: {
+            productId,
+            createdAt: {
+                lte: targetDate
+            }
+        },
+        orderBy: {
+            createdAt: 'asc'
+        }
+    })
+
+    let stockLevel = 0
+    logs.forEach(log => {
+        const quantity = parseInt((log as any).quantity || '0')
+        if (log.actionType === 'INCREASE') {
+            stockLevel += quantity
+        } else if (log.actionType === 'DECREASE') {
+            stockLevel -= Math.abs(quantity)
+        }
+    })
+
+    return stockLevel
+}
+
+// Helper function to calculate average stock over a period
+async function calculateAverageStock(productId: string, startDate: Date, endDate: Date): Promise<number> {
+    const logs = await prisma.inventoryLog.findMany({
+        where: {
+            productId,
+            createdAt: {
+                gte: startDate,
+                lte: endDate
+            }
+        },
+        orderBy: {
+            createdAt: 'asc'
+        }
+    })
+
+    if (logs.length === 0) return 0
+
+    let totalStock = 0
+    let currentStock = 0
+
+    // Group logs by day and calculate daily averages
+    const dailyStocks = new Map<string, number>()
+    
+    logs.forEach(log => {
+        const dateKey = log.createdAt.toISOString().split('T')[0]
+        const quantity = parseInt((log as any).quantity || '0')
+        
+        if (log.actionType === 'INCREASE') {
+            currentStock += quantity
+        } else if (log.actionType === 'DECREASE') {
+            currentStock -= Math.abs(quantity)
+        }
+        
+        dailyStocks.set(dateKey, currentStock)
+    })
+
+    const averageStock = Array.from(dailyStocks.values()).reduce((sum, stock) => sum + stock, 0) / dailyStocks.size
+    return averageStock
+}
+
+// Helper function to get baseline stock (first recorded stock)
+async function getBaselineStock(productId: string): Promise<number> {
+    const firstLog = await prisma.inventoryLog.findFirst({
+        where: {
+            productId
+        },
+        orderBy: {
+            createdAt: 'asc'
+        }
+    })
+
+    if (!firstLog) return 0
+
+    const quantity = parseInt((firstLog as any).quantity || '0')
+    return firstLog.actionType === 'INCREASE' ? quantity : 0
+} 
