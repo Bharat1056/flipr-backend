@@ -45,25 +45,41 @@ export const createProduct = asyncHandler(async (req: AuthenticatedRequest, res:
         status = "CRITICAL"
     }
 
-    // Create product
-    const product = await prisma.product.create({
-        data: {
-            name,
-            description,
-            imageUrl,
-            numberOfStocks: numberOfStocks || 0,
-            value: value || 0,
-            threshold: threshold || 10,
-            categoryId: categoryObj.id,
-            status
-        },
-        include: {
-            category: true
-        }
+    // Create product and stock snapshot in a transaction
+    const result = await prisma.$transaction(async (tx) => {
+        // Create product
+        const product = await tx.product.create({
+            data: {
+                name,
+                description,
+                imageUrl,
+                numberOfStocks: numberOfStocks || 0,
+                value: value || 0,
+                threshold: threshold || 10,
+                categoryId: categoryObj.id,
+                status
+            },
+            include: {
+                category: true
+            }
+        })
+
+        // Create initial stock snapshot
+        const stockSnapshot = await tx.stockSnapshot.create({
+            data: {
+                productId: product.id,
+                quantity: numberOfStocks || 0,
+                value: value || 0
+            }
+        })
+
+        console.log('Created initial stock snapshot:', stockSnapshot)
+
+        return product
     })
 
     return res.status(201).json(
-        new ApiResponse(201, product, "Product created successfully")
+        new ApiResponse(201, result, "Product created successfully with initial stock snapshot")
     )
 })
 
@@ -383,58 +399,75 @@ export const updateProductQuantity = asyncHandler(async (req: AuthenticatedReque
         newStatus = "GOOD"
     }
 
-    const updatedProduct = await prisma.product.update({
-        where: { id: productId },
-        data: {
-            numberOfStocks: newQuantity,
-            status: newStatus
-        },
-        include: {
-            category: true
-        }
-    })
-
-    // Create inventory log only if there's a change
-    if (quantityDifference !== 0) {
-        console.log('Creating inventory log with data:', {
-            note: note || `Quantity ${isIncrease ? 'increased' : 'decreased'} from ${previousQuantity} to ${newQuantity}`,
-            actionType: actionType,
-            productId: productId,
-            quantity: formattedQuantity,
-            adminId: role === "ADMIN" ? id : undefined,
-            staffId: role === "STAFF" ? id : undefined
+    // Use transaction to update product and create inventory log and stock snapshot
+    const result = await prisma.$transaction(async (tx) => {
+        // Update product
+        const updatedProduct = await tx.product.update({
+            where: { id: productId },
+            data: {
+                numberOfStocks: newQuantity,
+                status: newStatus
+            },
+            include: {
+                category: true
+            }
         })
-        
-        try {
-            const inventoryLogData: any = {
+
+        // Create inventory log only if there's a change
+        if (quantityDifference !== 0) {
+            console.log('Creating inventory log with data:', {
                 note: note || `Quantity ${isIncrease ? 'increased' : 'decreased'} from ${previousQuantity} to ${newQuantity}`,
                 actionType: actionType,
                 productId: productId,
-                quantity: formattedQuantity
-            }
-
-            if (role === "ADMIN") {
-                inventoryLogData.adminId = id
-            } else {
-                inventoryLogData.staffId = id
-            }
-
-            const inventoryLog = await prisma.inventoryLog.create({
-                data: inventoryLogData
+                quantity: formattedQuantity,
+                adminId: role === "ADMIN" ? id : undefined,
+                staffId: role === "STAFF" ? id : undefined
             })
             
-            console.log('Created inventory log:', inventoryLog)
-        } catch (error) {
-            console.error('Error creating inventory log:', error)
-            throw new ApiError(500, "Failed to create inventory log")
+            try {
+                const inventoryLogData: any = {
+                    note: note || `Quantity ${isIncrease ? 'increased' : 'decreased'} from ${previousQuantity} to ${newQuantity}`,
+                    actionType: actionType,
+                    productId: productId,
+                    quantity: formattedQuantity
+                }
+
+                if (role === "ADMIN") {
+                    inventoryLogData.adminId = id
+                } else {
+                    inventoryLogData.staffId = id
+                }
+
+                const inventoryLog = await tx.inventoryLog.create({
+                    data: inventoryLogData
+                })
+                
+                console.log('Created inventory log:', inventoryLog)
+            } catch (error) {
+                console.error('Error creating inventory log:', error)
+                throw new ApiError(500, "Failed to create inventory log")
+            }
         }
-    }
+
+        // Create stock snapshot for the updated stock
+        const stockSnapshot = await tx.stockSnapshot.create({
+            data: {
+                productId: productId,
+                quantity: newQuantity,
+                value: product.value // Keep the same value, only quantity changed
+            }
+        })
+
+        console.log('Created stock snapshot:', stockSnapshot)
+
+        return updatedProduct
+    })
 
     const responseMessage = quantityDifference === 0 
         ? "Product quantity unchanged" 
-        : `Product quantity ${isIncrease ? 'increased' : 'decreased'} successfully`
+        : `Product quantity ${isIncrease ? 'increased' : 'decreased'} successfully with stock snapshot created`
 
     return res.status(200).json(
-        new ApiResponse(200, updatedProduct, responseMessage)
+        new ApiResponse(200, result, responseMessage)
     )
 })

@@ -557,3 +557,170 @@ async function getBaselineStock(productId: string): Promise<number> {
     const quantity = parseInt((firstLog as any).quantity || '0')
     return firstLog.actionType === 'INCREASE' ? quantity : 0
 } 
+
+export const getStockSnapshots = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+    const { id, role } = req.user!
+    const { 
+        productId, 
+        categoryId, 
+        startDate, 
+        endDate,
+        page = "1", 
+        limit = "10", 
+        sortBy = "timestamp", 
+        sortOrder = "desc"
+    } = req.query
+    
+    const pageNumber = parseInt(page as string) || 1
+    const limitNumber = parseInt(limit as string) || 10
+    const skip = (pageNumber - 1) * limitNumber
+
+    let whereClause: any = {}
+
+    // Role-based filtering
+    if (role === "STAFF") {
+        whereClause.product = {
+            assignees: { some: { id } }
+        }
+    } else if (role === "ADMIN") {
+        whereClause.product = {
+            category: { adminId: id }
+        }
+    } else {
+        throw new ApiError(403, "Invalid role")
+    }
+
+    // Filter by product
+    if (productId) {
+        whereClause.productId = productId as string
+    }
+
+    // Filter by category
+    if (categoryId) {
+        whereClause.product = {
+            ...whereClause.product,
+            categoryId: categoryId as string
+        }
+    }
+
+    // Filter by date range
+    if (startDate || endDate) {
+        whereClause.timestamp = {}
+        
+        if (startDate) {
+            whereClause.timestamp.gte = new Date(startDate as string)
+        }
+        
+        if (endDate) {
+            whereClause.timestamp.lte = new Date(endDate as string)
+        }
+    }
+
+    // Validate sortBy and sortOrder
+    const validSortFields = ['timestamp', 'quantity', 'value', 'createdAt']
+    const validSortOrders = ['asc', 'desc']
+    
+    if (!validSortFields.includes(sortBy as string)) {
+        throw new ApiError(400, "Invalid sortBy parameter")
+    }
+    
+    if (!validSortOrders.includes(sortOrder as string)) {
+        throw new ApiError(400, "Invalid sortOrder parameter")
+    }
+
+    // Get total count for pagination
+    const total = await prisma.stockSnapshot.count({
+        where: whereClause
+    })
+
+    // Get stock snapshots with pagination and sorting
+    const stockSnapshots = await prisma.stockSnapshot.findMany({
+        where: whereClause,
+        include: {
+            product: {
+                include: {
+                    category: true
+                }
+            }
+        },
+        skip,
+        take: limitNumber,
+        orderBy: {
+            [sortBy as string]: sortOrder as 'asc' | 'desc'
+        }
+    })
+
+    // Transform snapshots to match the required format
+    const transformedSnapshots = stockSnapshots.map((snapshot: any) => ({
+        id: snapshot.id,
+        productId: snapshot.productId,
+        productName: snapshot.product.name,
+        categoryName: snapshot.product.category.name,
+        quantity: snapshot.quantity,
+        value: snapshot.value,
+        timestamp: snapshot.timestamp,
+        createdAt: snapshot.createdAt
+    }))
+
+    const totalPages = Math.ceil(total / limitNumber)
+
+    return res.status(200).json(
+        new ApiResponse(200, {
+            snapshots: transformedSnapshots,
+            pagination: {
+                page: pageNumber,
+                limit: limitNumber,
+                total,
+                totalPages
+            }
+        }, "Stock snapshots fetched successfully")
+    )
+})
+
+export const getStockSnapshotById = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+    const { id: userId, role } = req.user!
+    const { productId } = req.params
+
+    const snapshot = await prisma.stockSnapshot.findFirst({
+        where: { productId },
+        include: {
+            product: {
+                include: {
+                    category: true,
+                    assignees: true
+                }
+            }
+        }
+    })
+
+    if (!snapshot) {
+        throw new ApiError(404, "Stock snapshot not found")
+    }
+
+    // Check authorization
+    if (role === "STAFF") {
+        const isAssigned = (snapshot as any).product.assignees?.some((assignee: any) => assignee.id === userId)
+        if (!isAssigned) {
+            throw new ApiError(403, "You are not authorized to view this snapshot")
+        }
+    } else if (role === "ADMIN") {
+        if ((snapshot as any).product.category.adminId !== userId) {
+            throw new ApiError(403, "You are not authorized to view this snapshot")
+        }
+    }
+
+    const transformedSnapshot = {
+        id: snapshot.id,
+        productId: snapshot.productId,
+        productName: (snapshot as any).product.name,
+        categoryName: (snapshot as any).product.category.name,
+        quantity: snapshot.quantity,
+        value: snapshot.value,
+        timestamp: snapshot.timestamp,
+        createdAt: snapshot.createdAt
+    }
+
+    return res.status(200).json(
+        new ApiResponse(200, transformedSnapshot, "Stock snapshot fetched successfully")
+    )
+}) 

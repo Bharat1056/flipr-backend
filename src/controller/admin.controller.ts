@@ -170,50 +170,94 @@ export const loginAdmin = asyncHandler(async (req: Request, res: Response) => {
             password,
         })
 
+        // First, try to find admin with the email
         const admin = await prisma.admin.findUnique({
             where: { email: validatedData.email }
         })
 
-        if (!admin) {
-            throw new ApiError(401, "Invalid credentials")
+        if (admin) {
+            // Admin found, validate password
+            const isPasswordValid = await bcrypt.compare(validatedData.password, admin.password)
+
+            if (!isPasswordValid) {
+                throw new ApiError(401, "Invalid credentials")
+            }
+
+            // Generate tokens for admin
+            const tokens = tokenService.generateToken({
+                id: admin.id,
+                email: admin.email,
+                username: admin.username,
+                role: 'ADMIN',
+            })
+
+            // Update admin with refresh token
+            await prisma.admin.update({
+                where: { id: admin.id },
+                data: { refreshToken: tokens.refreshToken }
+            })
+
+            return res.status(200).json(
+                new ApiResponse(200, {
+                    user: {
+                        id: admin.id,
+                        fullName: admin.fullName,
+                        username: admin.username,
+                        email: admin.email,
+                        role: "ADMIN"
+                    },
+                    token: tokens.refreshToken,
+                    expiresIn: tokens.expiresIn,
+                }, "Admin logged in successfully")
+            )
         }
 
-        const isPasswordValid = await bcrypt.compare(validatedData.password, admin.password)
+        // Admin not found, try to find staff with the email
+        const staff = await prisma.staff.findUnique({
+            where: { email: validatedData.email }
+        })
 
-        if (!isPasswordValid) {
-            throw new ApiError(401, "Invalid credentials")
+        if (staff) {
+            // Staff found, validate password
+            const isPasswordValid = await bcrypt.compare(validatedData.password, staff.password)
+
+            if (!isPasswordValid) {
+                throw new ApiError(401, "Invalid credentials")
+            }
+
+            // Generate tokens for staff
+            const tokens = tokenService.generateToken({
+                id: staff.id,
+                email: staff.email,
+                username: staff.username,
+                role: 'STAFF',
+            })
+
+            // Update staff with refresh token
+            await prisma.staff.update({
+                where: { id: staff.id },
+                data: { refreshToken: tokens.refreshToken }
+            })
+
+            return res.status(200).json(
+                new ApiResponse(200, {
+                    user: {
+                        id: staff.id,
+                        fullName: staff.fullName,
+                        username: staff.username,
+                        email: staff.email,
+                        role: "STAFF",
+                        adminId: staff.adminId
+                    },
+                    token: tokens.refreshToken,
+                    expiresIn: tokens.expiresIn,
+                }, "Staff logged in successfully")
+            )
         }
 
-        // Generate tokens
-        const tokens = tokenService.generateToken({
-            id: admin.id,
-            email: admin.email,
-            username: admin.username,
-            role: 'ADMIN',
-        })
+        // Neither admin nor staff found with this email
+        throw new ApiError(401, "Invalid credentials")
 
-        // Set cookies
-        // tokenService.setAuthCookies(res, tokens)
-
-        // Update admin with refresh token
-        await prisma.admin.update({
-            where: { id: admin.id },
-            data: { refreshToken: tokens.refreshToken }
-        })
-
-        return res.status(200).json(
-            new ApiResponse(200, {
-                user: {
-                    id: admin.id,
-                    fullName: admin.fullName,
-                    username: admin.username,
-                    email: admin.email,
-                    role: "ADMIN"
-                },
-                token: tokens.refreshToken,
-                expiresIn: tokens.expiresIn,
-            }, "Admin logged in successfully")
-        )
     } catch (error: any) {
         // Handle Zod validation errors
         if (error instanceof ZodError) {
@@ -267,7 +311,7 @@ export const loginAdmin = asyncHandler(async (req: Request, res: Response) => {
         }
 
         // Generic error handler
-        console.error('Admin login error:', error);
+        console.error('Login error:', error);
         return res.status(500).json(
             new ApiResponse(500, {
                 message: "Something went wrong during login"

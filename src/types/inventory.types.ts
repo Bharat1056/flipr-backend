@@ -5,6 +5,7 @@ export const getInventoryLogsQuerySchema = z.object({
     page: z.string().optional(),
     limit: z.string().optional(),
     sortBy: z.enum(['createdAt', 'actionType', 'quantity']).optional(),
+    sortOrder: z.enum(['asc', 'desc']).optional(),
     actionType: z.string().optional(),
     productId: z.string().optional(),
     categoryId: z.string().optional(),
@@ -24,6 +25,17 @@ export const getStockVarianceQuerySchema = z.object({
     endDate: z.string().optional(),
     targetDate: z.string().optional(),
     comparisonType: z.enum(['previous', 'average', 'baseline']).optional(),
+})
+
+export const getStockSnapshotsQuerySchema = z.object({
+    productId: z.string().optional(),
+    categoryId: z.string().optional(),
+    startDate: z.string().optional(),
+    endDate: z.string().optional(),
+    page: z.string().optional(),
+    limit: z.string().optional(),
+    sortBy: z.enum(['timestamp', 'quantity', 'value', 'createdAt']).optional(),
+    sortOrder: z.enum(['asc', 'desc']).optional(),
 })
 
 export interface InventoryLogResponse {
@@ -86,5 +98,26 @@ export interface StockVarianceResponse {
         decreasedProducts: number
         unchangedProducts: number
         averageVariance: number
+    }
+}
+
+export interface StockSnapshotResponse {
+    id: string
+    productId: string
+    productName: string
+    categoryName: string
+    quantity: number
+    value: number
+    timestamp: Date
+    createdAt: Date
+}
+
+export interface StockSnapshotsResponse {
+    snapshots: StockSnapshotResponse[]
+    pagination: {
+        page: number
+        limit: number
+        total: number
+        totalPages: number
     }
 } 

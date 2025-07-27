@@ -47,7 +47,22 @@ export const getCategories = asyncHandler(async (req: AuthenticatedRequest, res:
     })
 
     if (!admin) {
-        throw new ApiError(404, "Admin not found")
+       const staff = await prisma.staff.findUnique({
+        where: {
+            id,
+        },
+       })
+       if (!staff) {
+        throw new ApiError(404, "Staff not found")
+       }
+       const categories = await prisma.category.findMany({
+        where: {
+            adminId: staff.adminId,
+        },
+       })
+       return res.status(200).json(
+        new ApiResponse(200, categories, "Categories fetched successfully")
+    )   
     }
 
     const categories = await prisma.category.findMany({
