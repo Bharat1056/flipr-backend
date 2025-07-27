@@ -118,13 +118,6 @@ export const getInventoryLogs = asyncHandler(async (req: AuthenticatedRequest, r
         }
     })
 
-    console.log('Raw inventory logs from database:', inventoryLogs.map(log => ({
-        id: log.id,
-        productId: log.productId,
-        actionType: log.actionType,
-        note: log.note
-    })))
-
     // Transform logs to match the required format
     const transformedLogs = inventoryLogs.map((log: any) => ({
         id: log.id,
