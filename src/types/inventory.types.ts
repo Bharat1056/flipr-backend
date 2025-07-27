@@ -1,12 +1,11 @@
-import { InventoryLogActionType } from "@prisma/client"
+
 import { z } from "zod"
 
 export const getInventoryLogsQuerySchema = z.object({
     page: z.string().optional(),
     limit: z.string().optional(),
     sortBy: z.enum(['createdAt', 'actionType', 'quantity']).optional(),
-    sortOrder: z.enum(['asc', 'desc']).optional(),
-    actionType: z.enum(Object.values(InventoryLogActionType) as [string, ...string[]]).optional(),
+    actionType: z.string().optional(),
     productId: z.string().optional(),
     categoryId: z.string().optional(),
     startDate: z.string().optional(),
@@ -30,7 +29,7 @@ export const getStockVarianceQuerySchema = z.object({
 export interface InventoryLogResponse {
     id: string
     note: string | null
-    actionType: InventoryLogActionType
+    actionType: string
     quantity: string | null
     createdAt: Date
     product: {

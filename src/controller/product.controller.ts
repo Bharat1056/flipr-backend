@@ -4,7 +4,7 @@ import prisma from "../utils/prisma"
 import ApiError from "../utils/apiError"
 import ApiResponse from "../utils/apiResponse"
 import { AuthenticatedRequest } from "../types/authentication.types"
-import { ProductStatus, InventoryLogActionType } from "@prisma/client"
+import { ProductStatus } from "@prisma/client"
 
 export const createProduct = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
     const { id, role } = req.user!

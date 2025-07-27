@@ -4,7 +4,6 @@ import prisma from "../utils/prisma"
 import ApiError from "../utils/apiError"
 import ApiResponse from "../utils/apiResponse"
 import { AuthenticatedRequest } from "../types/authentication.types"
-import { InventoryLogActionType } from "@prisma/client"
 
 export const getInventoryLogs = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
     const { id, role } = req.user!
@@ -73,9 +72,6 @@ export const getInventoryLogs = asyncHandler(async (req: AuthenticatedRequest, r
 
     // Filter by action type
     if (actionType) {
-        if (!Object.values(InventoryLogActionType).includes(actionType as InventoryLogActionType)) {
-            throw new ApiError(400, "Invalid action type")
-        }
         whereClause.actionType = actionType
     }
 
