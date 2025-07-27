@@ -4,6 +4,7 @@ import prisma from "../utils/prisma"
 import ApiError from "../utils/apiError"
 import ApiResponse from "../utils/apiResponse"
 import { AuthenticatedRequest } from "../types/authentication.types"
+import { ProductStatus } from "@prisma/client"
 
 export const createProduct = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
     const { id, role } = req.user!
@@ -39,6 +40,11 @@ export const createProduct = asyncHandler(async (req: AuthenticatedRequest, res:
         throw new ApiError(404, "Category not found or doesn't belong to this admin")
     }
 
+    let status = "GOOD"
+    if(numberOfStocks <= threshold){
+        status = "CRITICAL"
+    }
+
     // Create product
     const product = await prisma.product.create({
         data: {
@@ -48,7 +54,8 @@ export const createProduct = asyncHandler(async (req: AuthenticatedRequest, res:
             numberOfStocks: numberOfStocks || 0,
             value: value || 0,
             threshold: threshold || 10,
-            categoryId: categoryObj.id
+            categoryId: categoryObj.id,
+            status: status as ProductStatus
         },
         include: {
             category: true
@@ -62,14 +69,14 @@ export const createProduct = asyncHandler(async (req: AuthenticatedRequest, res:
 
 export const getProducts = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
     const { id, role } = req.user!
-    const { category, page = "1", limit = "10", sortBy = "createdAt", sortOrder = "desc", search } = req.query
+    const { category, page = "1", limit = "10", sortBy = "createdAt", sortOrder = "desc", search, status } = req.query
     
     const pageNumber = parseInt(page as string) || 1
     const limitNumber = parseInt(limit as string) || 10
     const skip = (pageNumber - 1) * limitNumber
 
     let whereClause: any = {}
-    let includeClause: any = {
+    let includeClause = {
         category: true,
         assignees: true
     }
@@ -138,6 +145,10 @@ export const getProducts = asyncHandler(async (req: AuthenticatedRequest, res: R
             whereClause.name = { contains: search as string, mode: "insensitive" }
         }
 
+        if (status) {
+            whereClause.status = status as ProductStatus
+        }
+
     } else if (role === "ADMIN") {
         // Admin can see all products under their categories
         const admin = await prisma.admin.findUnique({
@@ -190,6 +201,10 @@ export const getProducts = asyncHandler(async (req: AuthenticatedRequest, res: R
             whereClause.name = { contains: search as string, mode: "insensitive" }
         }
 
+        if (status) {
+            whereClause.status = status as ProductStatus
+        }
+
     } else {
         throw new ApiError(403, "Invalid role")
     }
@@ -210,11 +225,30 @@ export const getProducts = asyncHandler(async (req: AuthenticatedRequest, res: R
         }
     })
 
+    // Transform products to match the required format
+    const transformedProducts = products.map((product: any) => ({
+        id: product.id,
+        name: product.name,
+        imageUrl: product.imageUrl,
+        description: product.description,
+        numberOfStocks: product.numberOfStocks,
+        value: product.value,
+        threshold: product.threshold,
+        status: product.status,
+        categoryId: product.categoryId,
+        categoryName: product.category.name,
+        assignees: product.assignees.map((assignee: any) => ({
+            id: assignee.id,
+            name: assignee.fullName,
+            username: assignee.username
+        }))
+    }))
+
     const totalPages = Math.ceil(total / limitNumber)
 
     return res.status(200).json(
         new ApiResponse(200, {
-            products,
+            products: transformedProducts,
             pagination: {
                 page: pageNumber,
                 limit: limitNumber,
@@ -285,5 +319,176 @@ export const individualProduct = asyncHandler(async (req: Request, res: Response
 
     return res.status(200).json(
         new ApiResponse(200, {...product, adminName: admin.fullName, assignees: product.assignees.map(assignee => assignee.fullName)  }, "Product fetched successfully")
+    )
+})
+
+export const increaseProductQuantity = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+    const { id, role } = req.user!
+    const { productId } = req.params
+    const { quantity, note } = req.body
+
+    // Validate required fields
+    if (!quantity || quantity <= 0) {
+        throw new ApiError(400, "Quantity must be a positive number")
+    }
+
+    // Find the product
+    const product = await prisma.product.findUnique({
+        where: { id: productId },
+        include: {
+            category: true,
+            assignees: true
+        }
+    })
+
+    if (!product) {
+        throw new ApiError(404, "Product not found")
+    }
+
+    // Check authorization based on role
+    if (role === "STAFF") {
+        // Check if staff is assigned to this product
+        const isAssigned = product.assignees.some(assignee => assignee.id === id)
+        if (!isAssigned) {
+            throw new ApiError(403, "You are not authorized to modify this product")
+        }
+    } else if (role === "ADMIN") {
+        // Check if admin owns the category of this product
+        if (product.category.adminId !== id) {
+            throw new ApiError(403, "You are not authorized to modify this product")
+        }
+    } else {
+        throw new ApiError(403, "Invalid role")
+    }
+
+    // Update product quantity
+    const newQuantity = product.numberOfStocks + quantity
+    let newStatus = product.status
+
+    // Update status based on new quantity
+    if (newQuantity <= product.threshold) {
+        newStatus = "CRITICAL"
+    } else {
+        newStatus = "GOOD"
+    }
+
+    const updatedProduct = await prisma.product.update({
+        where: { id: productId },
+        data: {
+            numberOfStocks: newQuantity,
+            status: newStatus as ProductStatus
+        },
+        include: {
+            category: true
+        }
+    })
+
+    // Create inventory log
+    await prisma.inventoryLog.create({
+        data: {
+            note: note || "Manual quantity increase",
+            actionType: "UPDATE_PRODUCT_NUMBER_OF_STOCKS",
+            productId: productId,
+            quantity: `+${quantity}`,
+            ...(role === "ADMIN" ? { adminId: id } : { staffId: id })
+        }
+    })
+
+    return res.status(200).json(
+        new ApiResponse(200, updatedProduct, "Product quantity increased successfully")
+    )
+})
+
+export const decreaseProductQuantity = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+    const { id, role } = req.user!
+    const { productId } = req.params
+    const { quantity, note } = req.body
+
+    // Validate required fields
+    if (!quantity || quantity <= 0) {
+        throw new ApiError(400, "Quantity must be a positive number")
+    }
+
+    // Find the product
+    const product = await prisma.product.findUnique({
+        where: { id: productId },
+        include: {
+            category: true,
+            assignees: true
+        }
+    })
+
+    if (!product) {
+        throw new ApiError(404, "Product not found")
+    }
+
+    // Check authorization based on role
+    if (role === "STAFF") {
+        // Check if staff is assigned to this product
+        const isAssigned = product.assignees.some(assignee => assignee.id === id)
+        if (!isAssigned) {
+            throw new ApiError(403, "You are not authorized to modify this product")
+        }
+    } else if (role === "ADMIN") {
+        // Check if admin owns the category of this product
+        if (product.category.adminId !== id) {
+            throw new ApiError(403, "You are not authorized to modify this product")
+        }
+    } else {
+        throw new ApiError(403, "Invalid role")
+    }
+
+    // Check if there's enough stock to decrease
+    if (product.numberOfStocks < quantity) {
+        throw new ApiError(400, "Insufficient stock to decrease by the requested amount")
+    }
+
+    // Update product quantity
+    const newQuantity = product.numberOfStocks - quantity
+    let newStatus = product.status
+
+    // Update status based on new quantity
+    if (newQuantity <= product.threshold) {
+        newStatus = "CRITICAL"
+    } else {
+        newStatus = "GOOD"
+    }
+
+    const updatedProduct = await prisma.product.update({
+        where: { id: productId },
+        data: {
+            numberOfStocks: newQuantity,
+            status: newStatus as ProductStatus
+        },
+        include: {
+            category: true
+        }
+    })
+
+    // Create inventory log
+    await prisma.inventoryLog.create({
+        data: {
+            note: note || "Manual quantity decrease",
+            actionType: "UPDATE_PRODUCT_NUMBER_OF_STOCKS",
+            productId: productId,
+            quantity: `-${quantity}`,
+            ...(role === "ADMIN" ? { adminId: id } : { staffId: id })
+        }
+    })
+
+    // Create notification for threshold reached
+    if (newQuantity <= product.threshold && product.numberOfStocks > product.threshold) {
+        await prisma.notification.create({
+            data: {
+                type: "STOCK_THRESHOLD_REACHED",
+                message: `Product "${product.name}" has reached critical threshold. Current stock: ${newQuantity}`,
+                productId: productId,
+                ...(role === "ADMIN" ? { adminId: id } : { staffId: id })
+            }
+        })
+    }
+
+    return res.status(200).json(
+        new ApiResponse(200, updatedProduct, "Product quantity decreased successfully")
     )
 })

@@ -61,6 +61,11 @@ enum NotificationStatus {
   UNREAD
 }
 
+enum ProductStatus {
+  GOOD
+  CRITICAL
+}
+
 model Admin {
   id           String  @id @default(uuid())
   fullName     String
@@ -118,13 +123,14 @@ model Category {
 }
 
 model Product {
-  id             String  @id @default(uuid())
+  id             String        @id @default(uuid())
   name           String
   imageUrl       String?
   description    String?
-  numberOfStocks Int     @default(0)
-  value          Int     @default(0)
-  threshold      Int     @default(10)
+  numberOfStocks Int           @default(0)
+  value          Int           @default(0)
+  threshold      Int           @default(10)
+  status         ProductStatus @default(GOOD)
 
   assignees     Staff[]        @relation("productStaff")
   logs          InventoryLog[]
@@ -138,13 +144,12 @@ model Product {
 }
 
 model InventoryLog {
-  id          String  @id @default(uuid())
-  description String
-  reason      String?
+  id   String  @id @default(uuid())
+  note String?
 
   actionType InventoryLogActionType
+  quantity   String?
 
-  createdAt  DateTime  @default(now())
   Category   Category? @relation(fields: [categoryId], references: [id])
   categoryId String?
   Product    Product?  @relation(fields: [productId], references: [id])
@@ -153,6 +158,8 @@ model InventoryLog {
   adminId    String?
   Staff      Staff?    @relation(fields: [staffId], references: [id])
   staffId    String?
+
+  createdAt DateTime @default(now())
 }
 
 model Notification {
