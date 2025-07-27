@@ -5,6 +5,7 @@ import ApiError from "../utils/apiError"
 import ApiResponse from "../utils/apiResponse"
 import { AuthenticatedRequest } from "../types/authentication.types"
 import { ProductStatus } from "@prisma/client"
+import { InventoryLogActionType } from "@prisma/client"
 
 export const createProduct = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
     const { id, role } = req.user!
@@ -327,7 +328,6 @@ export const updateProductQuantity = asyncHandler(async (req: AuthenticatedReque
     const { productId } = req.params
     const { stock: newQuantity, note } = req.body
 
-
     // Validate required fields
     if (newQuantity === undefined || newQuantity === null) {
         throw new ApiError(400, "Stock quantity is required")
@@ -369,7 +369,7 @@ export const updateProductQuantity = asyncHandler(async (req: AuthenticatedReque
     // Determine if it's an increase or decrease
     const isIncrease = quantityDifference > 0
     const isDecrease = quantityDifference < 0
-    const actionType = isIncrease ? "INCREASE" : "DECREASE"
+    const actionType = isIncrease ? "INCREASE" as const : "DECREASE" as const
     
     // Format the quantity difference with + or - sign
     const formattedQuantity = isIncrease ? `+${quantityDifference}` : isDecrease ? `${quantityDifference}` : "0"
@@ -410,7 +410,7 @@ export const updateProductQuantity = asyncHandler(async (req: AuthenticatedReque
             const inventoryLog = await prisma.inventoryLog.create({
                 data: {
                     note: note || `Quantity ${isIncrease ? 'increased' : 'decreased'} from ${previousQuantity} to ${newQuantity}`,
-                    actionType: actionType,
+                    actionType: actionType as InventoryLogActionType,
                     productId: productId,
                     quantity: formattedQuantity,
                     ...(role === "ADMIN" ? { adminId: id } : { staffId: id })
