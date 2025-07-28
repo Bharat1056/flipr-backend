@@ -14,11 +14,11 @@ export const createProduct = asyncHandler(async (req: AuthenticatedRequest, res:
         throw new ApiError(403, "Only admins can create products")
     }
 
-    const { name, description, category, imageUrl, numberOfStocks, value, threshold } = req.body
+    const { name, description, category, imageUrl, numberOfStocks, value, threshold, staffName: staffId } = req.body
 
     // Validate required fields
-    if (!name || !category) {
-        throw new ApiError(400, "Name and categoryId are required")
+    if (!name || !category || !staffId) {
+        throw new ApiError(400, "Name, categoryId and staffId are required")
     }
 
     // Check if admin exists
@@ -45,6 +45,12 @@ export const createProduct = asyncHandler(async (req: AuthenticatedRequest, res:
         status = "CRITICAL"
     }
 
+    const staff = await prisma.staff.findUnique({
+        where: { id: staffId }
+    })
+    if (!staff) {
+        throw new ApiError(404, "Staff not found")
+    }   
     // Create product and stock snapshot in a transaction
     const result = await prisma.$transaction(async (tx) => {
         // Create product
@@ -57,7 +63,12 @@ export const createProduct = asyncHandler(async (req: AuthenticatedRequest, res:
                 value: value || 0,
                 threshold: threshold || 10,
                 categoryId: categoryObj.id,
-                status
+                status,
+                assignees: {
+                    connect: {
+                        id: staffId
+                    }
+                }
             },
             include: {
                 category: true
@@ -298,12 +309,41 @@ export const deleteProduct = asyncHandler(async (req: AuthenticatedRequest, res:
         throw new ApiError(403, "You are not authorized to delete this product")
     }
 
-    await prisma.product.delete({
-        where: { id: productId }
+    // Use transaction to delete related records first, then the product
+    await prisma.$transaction(async (tx) => {
+        // Disconnect all staff assignments for this product
+        await tx.product.update({
+            where: { id: productId },
+            data: {
+                assignees: {
+                    set: [] // This removes all staff assignments
+                }
+            }
+        })
+
+        // Delete all stock snapshots for this product
+        await tx.stockSnapshot.deleteMany({
+            where: { productId: productId }
+        })
+
+        // Delete all inventory logs for this product
+        await tx.inventoryLog.deleteMany({
+            where: { productId: productId }
+        })
+
+        // Delete all notifications for this product
+        await tx.notification.deleteMany({
+            where: { productId: productId }
+        })
+
+        // Finally delete the product
+        await tx.product.delete({
+            where: { id: productId }
+        })
     })
 
     return res.status(200).json(
-        new ApiResponse(200, null, "Product deleted successfully")
+        new ApiResponse(200, null, "Product and all related data deleted successfully")
     )
 })
 

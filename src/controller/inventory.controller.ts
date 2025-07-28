@@ -64,8 +64,28 @@ export const getInventoryLogs = asyncHandler(async (req: AuthenticatedRequest, r
         // Staff can only see their own logs
         whereClause.staffId = id
     } else if (role === "ADMIN") {
-        // Admin can see all logs related to their admin ID
-        whereClause.adminId = id
+        // Admin can see all logs from their staff members and their own logs
+        const admin = await prisma.admin.findUnique({
+            where: { id },
+            include: {
+                staffs: {
+                    select: { id: true }
+                }
+            }
+        })
+
+        if (!admin) {
+            throw new ApiError(404, "Admin not found")
+        }
+
+        // Get all staff IDs under this admin
+        const staffIds = admin.staffs.map(staff => staff.id)
+
+        // Include logs from admin themselves OR from any of their staff
+        whereClause.OR = [
+            { adminId: id }, // Admin's own logs
+            { staffId: { in: staffIds } } // Staff logs under this admin
+        ]
     } else {
         throw new ApiError(403, "Invalid role")
     }
@@ -197,7 +217,20 @@ export const getInventoryLogById = asyncHandler(async (req: AuthenticatedRequest
             throw new ApiError(403, "You are not authorized to view this log")
         }
     } else if (role === "ADMIN") {
-        if (log.adminId !== userId) {
+        // Admin can view their own logs OR logs from their staff members
+        const isAdminLog = log.adminId === userId
+        
+        let isStaffLog = false
+        if (log.staffId) {
+            // Check if the staff member belongs to this admin
+            const staff = await prisma.staff.findUnique({
+                where: { id: log.staffId },
+                select: { adminId: true }
+            })
+            isStaffLog = staff?.adminId === userId
+        }
+
+        if (!isAdminLog && !isStaffLog) {
             throw new ApiError(403, "You are not authorized to view this log")
         }
     }
@@ -244,7 +277,28 @@ export const getInventoryStats = asyncHandler(async (req: AuthenticatedRequest, 
     if (role === "STAFF") {
         whereClause.staffId = id
     } else if (role === "ADMIN") {
-        whereClause.adminId = id
+        // Admin can see stats from their staff members and their own logs
+        const admin = await prisma.admin.findUnique({
+            where: { id },
+            include: {
+                staffs: {
+                    select: { id: true }
+                }
+            }
+        })
+
+        if (!admin) {
+            throw new ApiError(404, "Admin not found")
+        }
+
+        // Get all staff IDs under this admin
+        const staffIds = admin.staffs.map(staff => staff.id)
+
+        // Include logs from admin themselves OR from any of their staff
+        whereClause.OR = [
+            { adminId: id }, // Admin's own logs
+            { staffId: { in: staffIds } } // Staff logs under this admin
+        ]
     } else {
         throw new ApiError(403, "Invalid role")
     }

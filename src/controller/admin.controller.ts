@@ -172,7 +172,10 @@ export const loginAdmin = asyncHandler(async (req: Request, res: Response) => {
 
         // First, try to find admin with the email
         const admin = await prisma.admin.findUnique({
-            where: { email: validatedData.email }
+            where: { email: validatedData.email },
+            include:{
+                staffs:true
+            }
         })
 
         if (admin) {
@@ -204,7 +207,13 @@ export const loginAdmin = asyncHandler(async (req: Request, res: Response) => {
                         fullName: admin.fullName,
                         username: admin.username,
                         email: admin.email,
-                        role: "ADMIN"
+                        role: "ADMIN",
+                        staffs: admin.staffs.map(staff => ({
+                            id: staff.id,
+                            fullName: staff.fullName,
+                            username: staff.username,
+                            email: staff.email,
+                        }))
                     },
                     token: tokens.refreshToken,
                     expiresIn: tokens.expiresIn,
@@ -247,7 +256,7 @@ export const loginAdmin = asyncHandler(async (req: Request, res: Response) => {
                         username: staff.username,
                         email: staff.email,
                         role: "STAFF",
-                        adminId: staff.adminId
+                        adminId: staff.adminId,
                     },
                     token: tokens.refreshToken,
                     expiresIn: tokens.expiresIn,
